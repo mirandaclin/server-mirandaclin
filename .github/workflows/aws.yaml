@@ -32,9 +32,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_USER_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_USER_KEY_SECRET }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Check existing instance
         id: ec2
@@ -65,10 +65,10 @@ jobs:
         id: create
         run: |
           INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id "${{ secrets.EC2_IMAGE_ID }}" \
-            --instance-type "${{ secrets.EC2_INSTANCE_TYPE }}" \
-            --key-name "${{ secrets.EC2_ACCESS_KEY_NAME }}" \
-            --security-group-ids "${{ secrets.EC2_SG_ID }}" \
+            --image-id "${{ secrets.AWS_EC2_IMG_ID }}" \
+            --instance-type "${{ secrets.AWS_EC2_INSTANCE_TYPE }}" \
+            --key-name "${{ secrets.AWS_EC2_ACCESS_KEY_NAME }}" \
+            --security-group-ids "${{ secrets.AWS_EC2_SG_ID }}" \
             --tag-specifications \
             "ResourceType=instance,Tags=[ {Key=Name,Value=${{ secrets.APP_NAME }}-${{ steps.branch.outputs.branch }}}, {Key=Branch,Value=${{ steps.branch.outputs.branch }}}, {Key=Service,Value=${{ secrets.APP_NAME }}}, {Key=ExpiresAt,Value=$(date -d "+3 hours" +%Y-%m-%dT%H:%M:%SZ)}, {Key=Environment,Value=${{ secrets.APP_ENV }}} ]" \
             --query 'Instances[0].InstanceId' \
@@ -101,21 +101,30 @@ jobs:
           echo "dns=$DNS" >> $GITHUB_OUTPUT
           echo "ip=$IP" >> $GITHUB_OUTPUT
 
+      - name: Sync HOSTNAME to org secret
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          gh secret set SERVER_PUBLIC_DNS \
+            --org ${{ secrets.ORGANIZATION }} \
+            --visibility all \
+            --body "${{ steps.ip.outputs.dns }}"
+
       - name: Copy image to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ steps.ip.outputs.ip }}
-          username: ${{ secrets.APP_USER }}
-          key: ${{ secrets.APP_KEY }}
+          username: ${{ secrets.AWS_SSH_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
           source: "bin"
-          target: "/home/${{ secrets.APP_USER }}/app/"
+          target: "/home/${{ secrets.AWS_SSH_USER }}/app/"
 
       - name: Configure service and restart
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ steps.ip.outputs.ip }}
-          username: ${{ secrets.APP_USER }}
-          key: ${{ secrets.APP_KEY }}
+          username: ${{ secrets.AWS_SSH_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
           script: |
             ENV_FILE=/etc/${{ secrets.APP_NAME }}/app.env
             if [ -f "$ENV_FILE" ] && [[ "${{ steps.branch.outputs.branch }}" != "master" && "${{ steps.branch.outputs.branch }}" != "main" ]]; then
@@ -123,15 +132,14 @@ jobs:
             else
               sudo mkdir -p /etc/${{ secrets.APP_NAME }}
               {
-              echo "APP_NAME=${{ secrets.APP_NAME }}"
-              echo "APP_PORT=${{ secrets.APP_PORT }}"
+              echo "APP_SOCIAL_NAME=${{ secrets.APP_SOCIAL_NAME }}"
               echo "APP_ENV=${{ secrets.APP_ENV }}"
-              echo "APP_HOST=${{ steps.ip.outputs.dns }}"
-              echo "RATE_LIMIT_ENABLED=${{ secrets.RATE_LIMIT_ENABLED }}"
+              echo "APP_NAME=${{ secrets.APP_NAME }}"
+              echo "APP_PORT=${{ secrets.APP_LOCAL_PORT }}"
+              echo "WEB_PUBLIC_DNS=${{ secrets.WEB_PUBLIC_DNS }}"
+              echo "WEB_VERIFY_EMAIL_URL=${{ secrets.WEB_VERIFY_EMAIL_URL }}"
               echo "CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}"
-              echo "CLIENT_HOSTNAME=${{ secrets.CLIENT_HOSTNAME }}"
-              echo "CLIENT_PORT=${{ secrets.CLIENT_PORT }}"
-              echo "CLIENT_VERIFY_EMAIL_URL=${{ secrets.CLIENT_VERIFY_EMAIL_URL }}"
+              echo "RATE_LIMIT_ENABLED=${{ secrets.RATE_LIMIT_ENABLED }}"
               echo "DB_DRIVER=${{ secrets.DB_DRIVER }}"
               echo "DB_HOST=${{ secrets.DB_HOST }}"
               echo "DB_PORT=${{ secrets.DB_PORT }}"
@@ -167,10 +175,10 @@ jobs:
               echo "After=network.target"
               echo "[Service]"
               echo "Type=simple"
-              echo "User=${{ secrets.APP_USER }}"
-              echo "WorkingDirectory=/home/${{ secrets.APP_USER }}/app"
+              echo "User=${{ secrets.AWS_SSH_USER }}"
+              echo "WorkingDirectory=/home/${{ secrets.AWS_SSH_USER }}/app"
               echo "EnvironmentFile=$ENV_FILE"
-              echo "ExecStart=/home/${{ secrets.APP_USER }}/app/bin/${{ secrets.APP_NAME }}"
+              echo "ExecStart=/home/${{ secrets.AWS_SSH_USER }}/app/bin/${{ secrets.APP_NAME }}"
               echo "Restart=always"
               echo "RestartSec=2"
               echo "[Install]"
@@ -190,7 +198,7 @@ jobs:
             echo "    listen 80;"
             echo "    server_name ${{ steps.ip.outputs.dns }};"
             echo "    location / {"
-            echo "        proxy_pass http://localhost:${{ secrets.APP_PORT }};"
+            echo "        proxy_pass http://localhost:${{ secrets.APP_LOCAL_PORT }};"
             echo "        proxy_http_version 1.1;"
             echo "        proxy_set_header Host \$host;"
             echo "        proxy_set_header X-Real-IP \$remote_addr;"

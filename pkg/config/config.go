@@ -18,10 +18,11 @@ type Config struct {
 }
 
 type App struct {
-	Name     string `json:"name" validate:"required"`
-	Env      string `json:"env" validate:"required,oneof=production staging development"`
-	HostName string `json:"host" validate:"required,url|hostname|ip"`
-	Port     string `json:"port" validate:"required"`
+	SocialName string `json:"social_name" validate:"required"`
+	Name       string `json:"name" validate:"required"`
+	Env        string `json:"env" validate:"required,oneof=production staging development"`
+	HostName   string `json:"host" validate:"required,url|hostname|ip"`
+	Port       string `json:"port" validate:"required"`
 
 	RateLimitEnabled   bool   `json:"rate_limit_enabled" validate:"required"`
 	CORSAllowedOrigins string `json:"cors" validate:"required"`
@@ -31,7 +32,6 @@ type App struct {
 
 type Client struct {
 	HostName            string `json:"host" validate:"required,url|hostname|ip"`
-	Port                string `json:"port" validate:"required"`
 	VerifyUserEmailPath string `json:"verify_email_url_path" validate:"required"`
 }
 
@@ -71,6 +71,7 @@ func Load() (*Config, error) {
 
 	cfg := Config{
 		App: App{
+			SocialName:         env("APP_SOCIAL_NAME", ""),
 			Name:               env("APP_NAME", ""),
 			Env:                env("APP_ENV", ""),
 			HostName:           env("APP_HOST", ""),
@@ -79,8 +80,7 @@ func Load() (*Config, error) {
 			CORSAllowedOrigins: env("CORS_ALLOWED_ORIGINS", ""),
 			Frontend: Client{
 				HostName:            env("CLIENT_HOSTNAME", ""),
-				Port:                env("CLIENT_PORT", ""),
-				VerifyUserEmailPath: env("CLIENT_VERIFY_EMAIL_URL", ""),
+				VerifyUserEmailPath: env("WEB_VERIFY_EMAIL_URL", ""),
 			},
 		},
 		DB: DataBase{
@@ -138,10 +138,8 @@ func (d *DataBase) DSN() string {
 }
 
 func (a *App) ClientUrl() string {
-	if _, err := strconv.Atoi(a.Frontend.Port); err != nil {
-		return a.Frontend.HostName
-	}
-	return fmt.Sprintf("%s:%s", a.Frontend.HostName, a.Frontend.Port)
+	return a.Frontend.HostName
+
 }
 
 func (a *App) VerifyEmailUrl(token string) string {

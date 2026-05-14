@@ -95,7 +95,7 @@ jobs:
             ("CORS_ALLOWED_ORIGINS",   "${{ secrets.CORS_ALLOWED_ORIGINS }}"),
             ("CLIENT_HOSTNAME",        "${{ secrets.CLIENT_HOSTNAME }}"),
             ("CLIENT_PORT",            "${{ secrets.CLIENT_PORT }}"),
-            ("CLIENT_VERIFY_EMAIL_URL","${{ secrets.CLIENT_VERIFY_EMAIL_URL }}"),
+            ("WEB_VERIFY_EMAIL_URL","${{ secrets.WEB_VERIFY_EMAIL_URL }}"),
             ("DB_HOST",                "${{ secrets.DB_HOST }}"),
             ("DB_PORT",                "${{ secrets.DB_PORT }}"),
             ("DB_USER",                "${{ secrets.DB_USER }}"),
