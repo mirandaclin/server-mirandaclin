@@ -110,16 +110,6 @@ jobs:
             --visibility all \
             --body "${{ steps.ip.outputs.dns }}"
 
-      - name: Sync HOSTNAME to env in org secret
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          gh secret set SERVER_PUBLIC_DNS \
-            --env ${{ (github.ref_name == 'main' || github.ref_name == 'master') && 'prod' || 'stg' }} \
-            --org ${{ secrets.ORGANIZATION }} \
-            --visibility all \
-            --body "${{ steps.ip.outputs.dns }}"
-
       - name: Copy image to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
