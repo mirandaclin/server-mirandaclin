@@ -111,7 +111,7 @@ func Load() (*Config, error) {
 	}
 
 	if err := validator.Validate(&cfg); err != nil {
-		return nil, fmt.Errorf("config validation returned error: %v", err)
+		return nil, fmt.Errorf("config validation returned error: %v - %#v", err, cfg.App)
 	}
 
 	return &cfg, nil
