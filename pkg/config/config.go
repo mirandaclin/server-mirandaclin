@@ -21,7 +21,6 @@ type App struct {
 	SocialName string `json:"social_name" validate:"required"`
 	Name       string `json:"name" validate:"required"`
 	Env        string `json:"env" validate:"required,oneof=production staging development"`
-	HostName   string `json:"host" validate:"required,url|hostname|ip"`
 	Port       string `json:"port" validate:"required"`
 
 	RateLimitEnabled   bool   `json:"rate_limit_enabled" validate:"required"`
@@ -111,7 +110,7 @@ func Load() (*Config, error) {
 	}
 
 	if err := validator.Validate(&cfg); err != nil {
-		return nil, fmt.Errorf("config validation returned error: %v - %#v", err, cfg.App)
+		return nil, fmt.Errorf("config validation returned error: %v", err)
 	}
 
 	return &cfg, nil

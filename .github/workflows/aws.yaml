@@ -108,7 +108,7 @@ jobs:
           gh secret set SERVER_PUBLIC_DNS \
             --org ${{ secrets.ORGANIZATION }} \
             --visibility all \
-            --body "${{ steps.ip.outputs.dns }}"
+            --body "http://${{ steps.ip.outputs.dns }}"
 
       - name: Copy image to EC2
         uses: appleboy/scp-action@v0.1.7
