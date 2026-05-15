@@ -74,12 +74,11 @@ func Load() (*Config, error) {
 			SocialName:         env("APP_SOCIAL_NAME", ""),
 			Name:               env("APP_NAME", ""),
 			Env:                env("APP_ENV", ""),
-			HostName:           env("APP_HOST", ""),
 			Port:               env("APP_PORT", "8080"),
 			RateLimitEnabled:   rateLimitEnabled,
 			CORSAllowedOrigins: env("CORS_ALLOWED_ORIGINS", ""),
 			Frontend: Client{
-				HostName:            env("CLIENT_HOSTNAME", ""),
+				HostName:            env("WEB_PUBLIC_DNS", ""),
 				VerifyUserEmailPath: env("WEB_VERIFY_EMAIL_URL", ""),
 			},
 		},
