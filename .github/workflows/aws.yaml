@@ -21,7 +21,7 @@ jobs:
       - name: Build binary
         run: |
           mkdir -p bin
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/mirandaclin ./cmd/api
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/${{ secrets.APP_NAME }} ./cmd/api
 
       - name: Extract branch name
         id: branch
