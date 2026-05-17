@@ -113,6 +113,12 @@ func registerRoutes(mux *http.ServeMux, h handlers, cfg *config.Config, c cache.
 		))
 	}
 
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		response.OK(w, "OK", map[string]any{
+			"message": "Server running",
+		})
+	})
+
 	// Observabilidade — sem autenticação (proteger por Security Group na AWS)
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.HandleFunc("GET /health", h.health.Liveness)
@@ -164,12 +170,6 @@ func registerRoutes(mux *http.ServeMux, h handlers, cfg *config.Config, c cache.
 	mux.Handle("POST /v1/api/consultations", protect(http.HandlerFunc(h.consultation.Create)))
 	mux.Handle("GET /v1/api/consultations/patient/{patient_id}", reportProtect(http.HandlerFunc(h.consultation.ListByPatient)))
 	mux.Handle("GET /v1/api/consultations/dentist/{dentist_id}", reportProtect(http.HandlerFunc(h.consultation.ListByDentist)))
-
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		response.OK(w, "OK", map[string]any{
-			"message": "Server running",
-		})
-	})
 
 	// Stack global: RequestID → RequestLogger → SecurityHeaders → CORS → Metrics → rotas
 	return middleware.RequestID(
