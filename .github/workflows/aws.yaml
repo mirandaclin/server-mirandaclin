@@ -111,17 +111,6 @@ jobs:
             --visibility all \
             --body "http://${{ steps.ip.outputs.dns }}"
 
-          CORS_ALLOWED="http://${{ steps.ip.outputs.dns }}"
-          if [ ! -z "${{ secrets.CORS_ALLOWED_ORIGINS }}" ]; then
-            CORS_ALLOWED="http://${{ steps.ip.outputs.dns }},${{ secrets.CORS_ALLOWED_ORIGINS }}"
-          fi
-
-          gh secret set CORS_ALLOWED_ORIGINS \
-            -r ${{ github.repository }} \
-            --body "$CORS_ALLOWED"
-
-          echo "cors_allowed=$CORS_ALLOWED" >> $GITHUB_OUTPUT
-
       - name: Copy image to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -148,7 +137,7 @@ jobs:
             echo "APP_PORT=${{ secrets.APP_LOCAL_PORT }}"
             echo "WEB_PUBLIC_DNS=${{ secrets.WEB_PUBLIC_DNS }}"
             echo "WEB_VERIFY_EMAIL_URL=${{ secrets.WEB_VERIFY_EMAIL_URL }}"
-            echo "CORS_ALLOWED_ORIGINS=${{ steps.sync.outputs.cors_allowed }}"
+            echo "CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}"
             echo "RATE_LIMIT_ENABLED=${{ secrets.RATE_LIMIT_ENABLED }}"
             echo "DB_DRIVER=${{ secrets.DB_DRIVER }}"
             echo "DB_HOST=${{ secrets.DB_HOST }}"
