@@ -129,7 +129,13 @@ jobs:
             ENV_FILE=/etc/${{ secrets.APP_NAME }}/app.env
             if [ -f "$ENV_FILE" ] && [[ "${{ steps.branch.outputs.branch }}" != "master" && "${{ steps.branch.outputs.branch }}" != "main" ]]; then
               echo "env file exist"
+
             else
+              CORS_ALLOWED="${{ steps.ip.outputs.dns }}"
+              if [ ! -z "${{ secrets.CORS_ALLOWED_ORIGINS }}" ]; then
+                CORS_ALLOWED="${{ steps.ip.outputs.dns }},${{ secrets.CORS_ALLOWED_ORIGINS }}"
+              fi
+
               sudo mkdir -p /etc/${{ secrets.APP_NAME }}
               {
               echo "APP_SOCIAL_NAME=${{ secrets.APP_SOCIAL_NAME }}"
@@ -138,7 +144,7 @@ jobs:
               echo "APP_PORT=${{ secrets.APP_LOCAL_PORT }}"
               echo "WEB_PUBLIC_DNS=${{ secrets.WEB_PUBLIC_DNS }}"
               echo "WEB_VERIFY_EMAIL_URL=${{ secrets.WEB_VERIFY_EMAIL_URL }}"
-              echo "CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}"
+              echo "CORS_ALLOWED_ORIGINS=$CORS_ALLOWED"
               echo "RATE_LIMIT_ENABLED=${{ secrets.RATE_LIMIT_ENABLED }}"
               echo "DB_DRIVER=${{ secrets.DB_DRIVER }}"
               echo "DB_HOST=${{ secrets.DB_HOST }}"
