@@ -172,7 +172,7 @@ jobs:
             else
               {
               echo "[Unit]"
-              echo "Description=My Go App - ${{ secrets.APP_NAME }}"
+              echo "Description=My Go APP - ${{ secrets.APP_NAME }}"
               echo "After=network.target"
               echo "[Service]"
               echo "Type=simple"
