@@ -2,8 +2,11 @@ name: AWS_CD
 
 on:
   push:
-    branches: [cicd]
-
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build_and_deploy:
