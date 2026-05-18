@@ -17,6 +17,7 @@ import (
 	"github.com/Mirnda/mirandaclin/internal/middleware"
 	"github.com/Mirnda/mirandaclin/pkg/config"
 	"github.com/Mirnda/mirandaclin/pkg/logger"
+	"github.com/Mirnda/mirandaclin/pkg/response"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	_ "github.com/Mirnda/mirandaclin/docs"
@@ -163,6 +164,16 @@ func registerRoutes(mux *http.ServeMux, h handlers, cfg *config.Config, c cache.
 	mux.Handle("POST /v1/api/consultations", protect(http.HandlerFunc(h.consultation.Create)))
 	mux.Handle("GET /v1/api/consultations/patient/{patient_id}", reportProtect(http.HandlerFunc(h.consultation.ListByPatient)))
 	mux.Handle("GET /v1/api/consultations/dentist/{dentist_id}", reportProtect(http.HandlerFunc(h.consultation.ListByDentist)))
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			response.Error(w, http.StatusNotFound, "route not found")
+			return
+		}
+		response.OK(w, "OK", map[string]any{
+			"message": "Server running",
+		})
+	})
 
 	// Stack global: RequestID → RequestLogger → SecurityHeaders → CORS → Metrics → rotas
 	return middleware.RequestID(

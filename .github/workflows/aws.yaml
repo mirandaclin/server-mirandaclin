@@ -1,0 +1,251 @@
+name: AWS_CD
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run lint
+        run: golangci-lint run
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Run tests
+        run: go test -v ./...
+
+  build_and_deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
+    environment:
+      name: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Build binary
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/${{ secrets.APP_NAME }} ./cmd/api
+
+      - name: Extract branch name
+        id: branch
+        run: |
+          BRANCH=$(git branch --show-current | tr '/' '-')
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_USER_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_USER_KEY_SECRET }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Check existing instance
+        id: ec2
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Branch,Values=${{ steps.branch.outputs.branch }}" \
+                      "Name=tag:Service,Values=${{ secrets.APP_NAME }}" \
+                      "Name=instance-state-name,Values=running,pending,stopped" \
+            --query "Reservations[*].Instances[*].InstanceId" --output text)
+
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+      - name: Start instance if stopped
+        if: steps.ec2.outputs.instance_id != ''
+        run: |
+          STATE=$(aws ec2 describe-instances \
+            --instance-ids ${{ steps.ec2.outputs.instance_id }} \
+            --query 'Reservations[0].Instances[0].State.Name' \
+            --output text)
+
+          if [ "$STATE" = "stopped" ]; then
+            aws ec2 start-instances --instance-ids ${{ steps.ec2.outputs.instance_id }}
+            aws ec2 wait instance-running --instance-ids ${{ steps.ec2.outputs.instance_id }}
+          fi
+
+      - name: Create EC2 instance
+        if: steps.ec2.outputs.instance_id == ''
+        id: create
+        run: |
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id "${{ secrets.AWS_EC2_IMG_ID }}" \
+            --instance-type "${{ secrets.AWS_EC2_INSTANCE_TYPE }}" \
+            --key-name "${{ secrets.AWS_EC2_ACCESS_KEY_NAME }}" \
+            --security-group-ids "${{ secrets.AWS_EC2_SG_ID }}" \
+            --tag-specifications \
+            "ResourceType=instance,Tags=[ {Key=Name,Value=${{ secrets.APP_NAME }}-${{ steps.branch.outputs.branch }}}, {Key=Branch,Value=${{ steps.branch.outputs.branch }}}, {Key=Service,Value=${{ secrets.APP_NAME }}}, {Key=ExpiresAt,Value=$(date -d "+3 hours" +%Y-%m-%dT%H:%M:%SZ)}, {Key=Environment,Value=${{ secrets.APP_ENV }}} ]" \
+            --query 'Instances[0].InstanceId' \
+            --output text)
+
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for EC2
+        if: steps.ec2.outputs.instance_id == ''
+        run: aws ec2 wait instance-running --instance-ids ${{ steps.create.outputs.instance_id }}
+
+      - name: Get public IP
+        id: ip
+        run: |
+          INSTANCE_ID="${{ steps.ec2.outputs.instance_id }}"
+
+          if [ -z "$INSTANCE_ID" ]; then
+            INSTANCE_ID="${{ steps.create.outputs.instance_id }}"
+          fi
+
+          DNS=$(aws ec2 describe-instances \
+            --instance-ids $INSTANCE_ID \
+            --query 'Reservations[0].Instances[0].PublicDnsName' \
+            --output text)
+          IP=$(aws ec2 describe-instances \
+            --instance-ids $INSTANCE_ID \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+
+          echo "dns=$DNS" >> $GITHUB_OUTPUT
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Sync secrets
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          gh secret set SERVER_PUBLIC_DNS \
+            --org ${{ secrets.ORGANIZATION }} \
+            --visibility all \
+            --body "http://${{ steps.ip.outputs.dns }}"
+
+      - name: Copy image to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ steps.ip.outputs.ip }}
+          username: ${{ secrets.AWS_SSH_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          source: "bin"
+          target: "/home/${{ secrets.AWS_SSH_USER }}/app/"
+
+      - name: Configure service and restart
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ steps.ip.outputs.ip }}
+          username: ${{ secrets.AWS_SSH_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            ENV_FILE=/etc/${{ secrets.APP_NAME }}/app.env
+
+            sudo mkdir -p /etc/${{ secrets.APP_NAME }}
+            {
+            echo "APP_SOCIAL_NAME=${{ secrets.APP_SOCIAL_NAME }}"
+            echo "APP_ENV=${{ secrets.APP_ENV }}"
+            echo "APP_NAME=${{ secrets.APP_NAME }}"
+            echo "APP_PORT=${{ secrets.APP_LOCAL_PORT }}"
+            echo "WEB_PUBLIC_DNS=${{ secrets.WEB_PUBLIC_DNS }}"
+            echo "WEB_VERIFY_EMAIL_URL=${{ secrets.WEB_VERIFY_EMAIL_URL }}"
+            echo "CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}"
+            echo "RATE_LIMIT_ENABLED=${{ secrets.RATE_LIMIT_ENABLED }}"
+            echo "DB_DRIVER=${{ secrets.DB_DRIVER }}"
+            echo "DB_HOST=${{ secrets.DB_HOST }}"
+            echo "DB_PORT=${{ secrets.DB_PORT }}"
+            echo "DB_USER=${{ secrets.DB_USER }}"
+            echo "DB_PASS=${{ secrets.DB_PASS }}"
+            echo "DB_NAME=${{ secrets.DB_NAME }}"
+            echo "DB_SSLMODE=${{ secrets.DB_SSLMODE }}"
+            echo "REDIS_ADDR=${{ secrets.REDIS_ADDR }}"
+            echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}"
+            echo "REDIS_DB=${{ secrets.REDIS_DB }}"
+            echo "JWT_ISSUER=${{ secrets.JWT_ISSUER }}"
+            echo "JWT_JWKS_URL=${{ secrets.JWT_JWKS_URL }}"
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}"
+            echo "SMTP_HOST=${{ secrets.SMTP_HOST }}"
+            echo "SMTP_PORT=${{ secrets.SMTP_PORT }}"
+            echo "SMTP_USER=${{ secrets.SMTP_USER }}"
+            echo "SMTP_PASS=${{ secrets.SMTP_PASS }}"
+            echo "SMTP_FROM=${{ secrets.SMTP_FROM }}"
+            echo "GRAFANA_USER=${{ secrets.GRAFANA_USER }}"
+            echo "GRAFANA_PASSWORD=${{ secrets.GRAFANA_PASSWORD }}"
+            } | sudo tee $ENV_FILE > /dev/null
+            sudo chmod 600 $ENV_FILE
+            echo "env file created"
+
+            SERVICE_FILE=/etc/systemd/system/${{ secrets.APP_NAME }}.service
+            if [ -f "$SERVICE_FILE" ] && [[ "${{ steps.branch.outputs.branch }}" != "master" && "${{ steps.branch.outputs.branch }}" != "main" ]]; then
+              echo "env file exist"
+            else
+              {
+              echo "[Unit]"
+              echo "Description=My Go APP - ${{ secrets.APP_NAME }}"
+              echo "After=network.target"
+              echo "[Service]"
+              echo "Type=simple"
+              echo "User=${{ secrets.AWS_SSH_USER }}"
+              echo "WorkingDirectory=/home/${{ secrets.AWS_SSH_USER }}/app"
+              echo "EnvironmentFile=$ENV_FILE"
+              echo "ExecStart=/home/${{ secrets.AWS_SSH_USER }}/app/bin/${{ secrets.APP_NAME }}"
+              echo "Restart=always"
+              echo "RestartSec=2"
+              echo "[Install]"
+              echo "WantedBy=multi-user.target"
+              } | sudo tee $SERVICE_FILE > /dev/null
+            fi
+
+            if ! command -v nginx &> /dev/null; then
+              sudo yum update -y
+              sudo yum install -y nginx
+            fi
+
+            sudo mkdir -p /etc/nginx/conf.d/ 
+            NGINX_SITE=/etc/nginx/conf.d/${{ secrets.APP_NAME }}.conf
+            {
+            echo "server {"
+            echo "    listen 80;"
+            echo "    server_name ${{ steps.ip.outputs.dns }};"
+            echo "    location / {"
+            echo "        proxy_pass http://localhost:${{ secrets.APP_LOCAL_PORT }};"
+            echo "        proxy_http_version 1.1;"
+            echo "        proxy_set_header Host \$host;"
+            echo "        proxy_set_header X-Real-IP \$remote_addr;"
+            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
+            echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
+            echo "    }"
+            echo "}"
+            } | sudo tee $NGINX_SITE > /dev/null
+
+            sudo grep -q 'server_names_hash_bucket_size' /etc/nginx/nginx.conf \
+                && echo "já configurado" || sudo sed -i '/http {/a\\tserver_names_hash_bucket_size 128;' /etc/nginx/nginx.conf
+
+            sudo rm -f /etc/nginx/sites-enabled/default
+
+            sudo systemctl daemon-reload
+            sudo systemctl enable ${{ secrets.APP_NAME }}
+            sudo systemctl restart ${{ secrets.APP_NAME }}
+
+            sudo nginx -t 
+            sudo systemctl enable nginx 
+            sudo systemctl restart nginx
+            sudo systemctl reload nginx

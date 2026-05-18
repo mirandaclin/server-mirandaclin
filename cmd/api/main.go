@@ -54,11 +54,7 @@ func main() {
 	}
 
 	// Cache
-	cache, err := infraCache.NewRedis(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
-	if err != nil {
-		log.Warn("Redis indisponível — usando Noop cache", logger.Err(err))
-		cache = infraCache.NewNoop()
-	}
+	cache := infraCache.New(log, cfg.Redis)
 
 	// Repositórios
 	userRepo := repository.NewUserRepository()

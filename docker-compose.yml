@@ -11,10 +11,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
 
   postgres:
+    profiles: [ dev ]
     image: postgres:16-alpine
     env_file:
       - .env
@@ -33,6 +36,7 @@ services:
       retries: 5
 
   redis:
+    profiles: [ dev ]
     image: redis:7-alpine
     env_file:
       - .env
@@ -47,6 +51,7 @@ services:
       retries: 5
 
   prometheus:
+    profiles: [ dev ]
     image: prom/prometheus:v3.4.0
     ports:
       - "9090:9090"
@@ -58,6 +63,7 @@ services:
       - --storage.tsdb.path=/prometheus
 
   loki:
+    profiles: [ dev ]
     image: grafana/loki:3.4.2
     ports:
       - "3100:3100"
@@ -67,6 +73,7 @@ services:
     command: -config.file=/etc/loki/loki.yml
 
   promtail:
+    profiles: [ dev ]
     image: grafana/promtail:3.4.2
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -76,6 +83,7 @@ services:
       - loki
 
   grafana:
+    profiles: [ dev ]
     image: grafana/grafana:11.6.1
     ports:
       - "3000:3000"
